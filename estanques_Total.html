@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Piscicultura • Filtro por departamento</title>
+
+  <!-- ArcGIS Maps SDK 4.33 -->
+  <link rel="stylesheet"
+        href="https://js.arcgis.com/4.33/esri/themes/light/main.css" />
+  <script src="https://js.arcgis.com/4.33/"></script>
+
+  <style>
+    html, body, #viewDiv { height:100%; width:100%; margin:0; padding:0; }
+    #status{
+      position:absolute; z-index:40; top:10px; left:10px;
+      background:rgba(255,255,255,.9); padding:6px 10px; border-radius:4px;
+      font-family:sans-serif; font-size:13px;
+    }
+    /* Botón y panel de filtro */
+    #filterBtn{
+      position:absolute; z-index:30; bottom:15px; right:15px;
+      background:#ffffff; border:1px solid #888; border-radius:4px;
+      padding:6px 10px; cursor:pointer; font-family:sans-serif; font-size:14px;
+      box-shadow:0 1px 4px rgba(0,0,0,.3);
+    }
+    #filterDiv{
+      position:absolute; z-index:30; bottom:60px; right:15px;
+      background:#ffffff; border:1px solid #888; border-radius:4px;
+      padding:10px; display:none; box-shadow:0 1px 4px rgba(0,0,0,.3);
+      font-family:sans-serif; font-size:14px;
+    }
+    #deptoSelect{ width:180px; padding:4px 6px; font-size:14px; }
+  </style>
+</head>
+<body>
+  <div id="status">⏳ Cargando capas…</div>
+  <div id="viewDiv"></div>
+
+  <!-- Botón y panel de filtro -->
+  <button id="filterBtn">Filtro por departamento</button>
+
+  <div id="filterDiv">
+    <label for="deptoSelect"><strong>Departamento</strong></label><br>
+    <select id="deptoSelect">
+      <option>Bolivia</option>
+      <option>Cochabamba</option>
+      <option>Santa Cruz</option>
+      <option>Beni</option>
+    </select>
+  </div>
+
+  <script>
+  require([
+    "esri/Map",
+    "esri/views/MapView",
+    "esri/layers/GeoJSONLayer",
+    "esri/widgets/LayerList",
+    "esri/widgets/Legend",
+    "esri/widgets/Expand"
+  ], (
+    Map,
+    MapView,
+    GeoJSONLayer,
+    LayerList,
+    Legend,
+    Expand
+  ) => {
+
+    /* 1. Mapa y vista */
+    const map  = new Map({ basemap:"satellite" });
+    const view = new MapView({
+      container:"viewDiv",
+      map,
+      center:[-64,-16.5],
+      zoom:6,
+      popup:{ dockEnabled:true,
+              dockOptions:{ position:"bottom-right", breakpoint:false } }
+    });
+
+    /* 2. URLs a los GeoJSON */
+    const urls = {
+      estanques:     "https://raw.githubusercontent.com/CTemplar-zz/EstanquesPiscicultura/main/Estanques_Bolivia.geojson",
+      departamentos: "https://raw.githubusercontent.com/CTemplar-zz/EstanquesPiscicultura/main/Departamentos.geojson",
+      municipios:    "https://raw.githubusercontent.com/CTemplar-zz/EstanquesPiscicultura/main/Municipios.geojson"
+    };
+
+    /* 3. Capas */
+    const municipiosLayer = new GeoJSONLayer({
+      url: urls.municipios,
+      title: "Municipios",
+      popupEnabled:false,
+      renderer:{
+        type:"simple",
+        symbol:{
+          type:"simple-fill",
+          color:[255,255,200,0.5],
+          outline:{ color:[255,255,200,1], width:1 }
+        }
+      },
+      labelingInfo:[{
+        labelExpressionInfo:{ expression:"$feature.MUNICIPIO" },
+        symbol:{ type:"text", color:"#555", haloColor:"#fff", haloSize:1,
+                 font:{ size:9 } },
+        minScale: 2000000
+      }]
+    });
+
+    const departamentosLayer = new GeoJSONLayer({
+      url: urls.departamentos,
+      title: "Departamentos",
+      popupEnabled:false,
+      renderer:{
+        type:"simple",
+        symbol:{
+          type:"simple-fill",
+          color:[0,0,0,0],
+          outline:{ color:"#000", width:2 }
+        }
+      },
+      labelingInfo:[{
+        labelExpressionInfo:{ expression:"$feature.nom_dep" },
+        symbol:{ type:"text", color:"#000", haloColor:"#fff", haloSize:1.5,
+                 font:{ size:11, weight:"bold" } },
+        minScale: 2000000
+      }]
+    });
+
+    const estanquesLayer = new GeoJSONLayer({
+      url: urls.estanques,
+      title: "Estanques",
+      renderer:{
+        type:"simple",
+        symbol:{ type:"simple-marker", style:"circle", size:3,
+                 color:"#999", outline:{ width:0.3, color:"#fff" } },
+        visualVariables:[{
+          type:"color", field:"YEAR",
+          stops:[
+            { value:2015, color:"#33a02c" },
+            { value:2019, color:"#fee08b" },
+            { value:2024, color:"#de425b" }
+          ]
+        }]
+      },
+      popupTemplate:{
+        title:"Estanque FID {FID}",
+        content:`<b>Año:</b> {YEAR}<br><b>Área (m²):</b> {Shape_Area:formatNumber}<br><b>Municipio:</b> {MUNICIPIO}`
+      }
+    });
+
+    map.addMany([ municipiosLayer, departamentosLayer, estanquesLayer ]);
+
+    /* 4. Función para aplicar filtro y centrar */
+    async function aplicarFiltro(depto){
+      if(depto==="Bolivia"){
+        estanquesLayer.definitionExpression =
+        municipiosLayer.definitionExpression =
+        departamentosLayer.definitionExpression = "";            // sin filtro
+        view.goTo({ center:[-64,-16.5], zoom:6 });
+        return;
+      }
+
+      estanquesLayer.definitionExpression    = `DEPARTAMEN = '${depto}'`;
+      municipiosLayer.definitionExpression    = `DEPARTAMEN = '${depto}'`;
+      departamentosLayer.definitionExpression = `nom_dep = '${depto}'`;
+
+      try{
+        const { extent } = await departamentosLayer.queryExtent();
+        if(extent){ view.goTo({ target: extent.expand(1.2) }); }
+      }catch(e){ console.warn("Extensión no disponible:", e); }
+    }
+
+    /* 5. Mostrar / ocultar panel filtro */
+    const filterBtn  = document.getElementById("filterBtn");
+    const filterDiv  = document.getElementById("filterDiv");
+    filterBtn.addEventListener("click",()=>{
+      filterDiv.style.display = filterDiv.style.display==="none" ? "block" : "none";
+    });
+
+    /* 6. Selector cambio */
+    const select = document.getElementById("deptoSelect");
+    select.addEventListener("change", ()=> aplicarFiltro(select.value));
+
+    /* 7. Leyenda en Expand (icono legend) */
+    view.ui.add(new Expand({
+      view,
+      content: new Legend({ view }),
+      expanded:false,
+      icon:"legend"
+    }), "bottom-left");
+
+    /* 8. Lista de capas */
+    view.ui.add(new LayerList({ view }), "top-right");
+
+    /* 9. BasemapToggle y Fullscreen como componentes web */
+    const toggleCmp = document.createElement("arcgis-basemap-toggle");
+    toggleCmp.view = view; toggleCmp.nextBasemap = "topo-vector";
+    const fullCmp  = document.createElement("arcgis-fullscreen");
+    fullCmp.view = view;
+    view.ui.add(toggleCmp, "top-left");
+    view.ui.add(fullCmp,  "top-left");
+
+    /* 10. Esperar capas y aplicar filtro inicial (Bolivia) */
+    Promise.all([ municipiosLayer.when(), departamentosLayer.when(), estanquesLayer.when() ])
+      .then(()=>{
+        document.getElementById("status").style.display="none";
+        aplicarFiltro(select.value);          // Bolivia por defecto
+      });
+  });
+  </script>
+</body>
+</html>
+

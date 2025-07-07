@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Piscicultura • Filtro por departamento</title>
+
+  <!-- ArcGIS Maps SDK 4.33 -->
+  <link rel="stylesheet" href="https://js.arcgis.com/4.33/esri/themes/light/main.css" />
+  <script src="https://js.arcgis.com/4.33/"></script>
+
+  <style>
+    html, body, #viewDiv { height:100%; width:100%; margin:0; padding:0; }
+    #status{
+      position:absolute; z-index:40; top:10px; left:10px;
+      background:rgba(255,255,255,.9); padding:6px 10px; border-radius:4px;
+      font-family:sans-serif; font-size:13px;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">⏳ Cargando capas…</div>
+  <div id="viewDiv"></div>
+
+  <script>
+  require([
+    "esri/Map",
+    "esri/views/MapView",
+    "esri/layers/GeoJSONLayer",
+    "esri/widgets/LayerList",
+    "esri/widgets/Legend",
+    "esri/widgets/Expand",
+    "esri/widgets/BasemapToggle",
+    "esri/widgets/Fullscreen"
+  ], (
+    Map,
+    MapView,
+    GeoJSONLayer,
+    LayerList,
+    Legend,
+    Expand,
+    BasemapToggle,
+    Fullscreen
+  ) => {
+
+    /* ———————————— 1. Departamento a visualizar ———————————— */
+    /* Cambia solo esta línea a 'Santa Cruz' o 'Beni' según necesites. */
+    const DEPTO = "Beni";
+
+    /* ———————————— 2. Mapa y vista ———————————— */
+    const map  = new Map({ basemap:"satellite" });
+    const view = new MapView({
+      container:"viewDiv",
+      map,
+      center:[-64.8,-16.95],
+      zoom:7,
+      popup:{ dockEnabled:true, dockOptions:{position:"bottom-right",breakpoint:false} }
+    });
+
+    /* ———————————— 3. URLs GeoJSON ———————————— */
+    const urls = {
+      estanques:     "https://raw.githubusercontent.com/CTemplar-zz/EstanquesPiscicultura/main/Estanques_Bolivia.geojson",
+      departamentos: "https://raw.githubusercontent.com/CTemplar-zz/EstanquesPiscicultura/main/Departamentos.geojson",
+      municipios:    "https://raw.githubusercontent.com/CTemplar-zz/EstanquesPiscicultura/main/Municipios.geojson"
+    };
+
+    /* ———————————— 4. Capas con Filtro ———————————— */
+
+    /* 4a. Municipios */
+    const municipiosLayer = new GeoJSONLayer({
+      url: urls.municipios,
+      title: "Municipios",
+      definitionExpression: `DEPARTAMEN = '${DEPTO}'`,   // ▼ filtro
+      popupEnabled: false,
+      renderer: {
+        type: "simple",
+        symbol: {
+          type: "simple-fill",
+          color: [255,255,200,0.35],                       // relleno claro 50 %
+          outline: { color:[255,255,200,1], width:1 }
+        }
+      },
+      labelingInfo: [{
+        labelExpressionInfo: { expression: "$feature.MUNICIPIO" },
+        symbol: {
+          type:"text",
+          color:"#555", haloColor:"#fff", haloSize:1,
+          font:{ family:"sans-serif", size:9 }
+        },
+        minScale: 2000000
+      }]
+    });
+
+    /* 4b. Departamentos */
+    const departamentosLayer = new GeoJSONLayer({
+      url: urls.departamentos,
+      title: "Departamentos",
+      definitionExpression: `nom_dep = '${DEPTO}'`,       // ▼ filtro
+      popupEnabled: false,
+      renderer: {
+        type:"simple",
+        symbol:{
+          type:"simple-fill",
+          color:[255,0,0,0],
+          outline:{ color:"#000", width:2 }
+        }
+      },
+      labelingInfo: [{
+        labelExpressionInfo: { expression: "$feature.nom_dep" },
+        symbol: {
+          type:"text",
+          color:"#000", haloColor:"#fff", haloSize:1.5,
+          font:{ family:"sans-serif", size:11, weight:"bold" }
+        },
+        minScale: 2000000
+      }]
+    });
+
+    /* 4c. Estanques */
+    const estanquesLayer = new GeoJSONLayer({
+      url: urls.estanques,
+      title: "Estanques",
+      definitionExpression: `DEPARTAMEN = '${DEPTO}'`,    // ▼ filtro
+      renderer: {
+        type:"simple",
+        symbol:{
+          type:"simple-marker", style:"circle", size:3,
+          color:"#999", outline:{ width:0.3, color:"#fff" }
+        },
+        visualVariables:[{
+          type:"color",
+          field:"YEAR",
+          stops:[
+            { value:2015, color:"#33a02c" },
+            { value:2019, color:"#fee08b" },
+            { value:2024, color:"#de425b" }
+          ]
+        }]
+      },
+      popupTemplate:{
+        title:"Estanque FID {FID}",
+        content:`
+          <b>Año:</b> {YEAR}<br>
+          <b>Área (m²):</b> {Shape_Area:formatNumber}<br>
+          <b>Municipio:</b> {MUNICIPIO}`
+      }
+    });
+
+    /* ———————————— 5. Añadir capas (orden) ———————————— */
+    map.add(municipiosLayer);        // abajo
+    map.add(departamentosLayer);     // medio
+    map.add(estanquesLayer);         // arriba
+
+    /* ———————————— 6. Ocultar mensaje cuando todo esté listo ———————————— */
+    Promise.all([municipiosLayer.when(), departamentosLayer.when(), estanquesLayer.when()])
+      .then(()=> document.getElementById("status").style.display="none");
+
+    /* ———————————— 7. Widgets ———————————— */
+    view.ui.add(new LayerList({ view }), "top-right");
+
+    const legendExpand = new Expand({
+      view,
+      content: new Legend({ view }),
+      expanded: false,
+      icon: "legend"
+    });
+    view.ui.add(legendExpand, "bottom-left");
+
+    view.ui.add(new BasemapToggle({ view, nextBasemap:"topo-vector" }), "top-left");
+    view.ui.add(new Fullscreen({ view }), "top-left");
+  });
+  </script>
+</body>
+</html>
