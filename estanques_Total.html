@@ -2,13 +2,15 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Piscicultura • Filtro por departamento</title>
+  <title>Piscicultura en la amazonia Boliviana</title>
 
   <!-- ArcGIS Maps SDK 4.33 -->
   <link rel="stylesheet"
         href="https://js.arcgis.com/4.33/esri/themes/light/main.css" />
   <script src="https://js.arcgis.com/4.33/"></script>
-
+  <!-- ArcGIS Maps SDK Web Components -->
+  <script type="module" src="https://js.arcgis.com/map-components/4.33/arcgis-map-components.esm.js"></script>
+  <link rel="stylesheet" href="https://js.arcgis.com/map-components/4.33/themes/light/arcgis-map-components.min.css" />
   <style>
     html, body, #viewDiv { height:100%; width:100%; margin:0; padding:0; }
     #status{
@@ -77,7 +79,7 @@
               dockOptions:{ position:"bottom-right", breakpoint:false } }
     });
 
-    /* 2. URLs a los GeoJSON */
+    /* 2. URLs a los GeoJSON, actualmente estan alojadas en Github, pero en el futuro habria que subir todas las capas al servidor de la pagina web */ 
     const urls = {
       estanques:     "https://raw.githubusercontent.com/CTemplar-zz/EstanquesPiscicultura/main/Estanques_Bolivia.geojson",
       departamentos: "https://raw.githubusercontent.com/CTemplar-zz/EstanquesPiscicultura/main/Departamentos.geojson",
@@ -101,7 +103,7 @@
         labelExpressionInfo:{ expression:"$feature.MUNICIPIO" },
         symbol:{ type:"text", color:"#555", haloColor:"#fff", haloSize:1,
                  font:{ size:9 } },
-        minScale: 2000000
+        minScale: 4000000
       }]
     });
 
@@ -114,14 +116,14 @@
         symbol:{
           type:"simple-fill",
           color:[0,0,0,0],
-          outline:{ color:"#000", width:2 }
+          outline:{ color:"#FFFFFF", width:2 }
         }
       },
       labelingInfo:[{
         labelExpressionInfo:{ expression:"$feature.nom_dep" },
         symbol:{ type:"text", color:"#000", haloColor:"#fff", haloSize:1.5,
                  font:{ size:11, weight:"bold" } },
-        minScale: 2000000
+        minScale: 16000000
       }]
     });
 
@@ -143,7 +145,7 @@
       },
       popupTemplate:{
         title:"Estanque FID {FID}",
-        content:`<b>Año:</b> {YEAR}<br><b>Área (m²):</b> {Shape_Area:formatNumber}<br><b>Municipio:</b> {MUNICIPIO}`
+        content:`<b>Año:</b> {YEAR}<br><b>Área (m²):</b> {Shape_Area}<br><b>Municipio:</b> {MUNICIPIO}`
       }
     });
 
@@ -190,7 +192,40 @@
 
     /* 8. Lista de capas */
     view.ui.add(new LayerList({ view }), "top-right");
+// 11. Cambiar colores de bordes según el basemap activo
+function actualizarEstilosBasemap(basemapId) {
+  const esSatelital = basemapId === "satellite";
+  // Departamentos
+  departamentosLayer.renderer = {
+    type: "simple",
+    symbol: {
+      type: "simple-fill",
+      color: [0, 0, 0, 0],
+      outline: {
+        color: esSatelital ? "#ffffff" : "#000000",
+        width: 2
+      }
+    }
+  };
 
+  // Municipios
+  municipiosLayer.renderer = {
+    type: "simple",
+    symbol: {
+      type: "simple-fill",
+      color: [255, 255, 200, 0.5],
+      outline: {
+        color: esSatelital ? [255, 255, 200, 1] : "#444444",
+        width: 1
+      }
+    }
+  };
+}
+
+// Escuchar cambio de mapa base
+view.watch("map.basemap.id", function (newBasemapId) {
+  actualizarEstilosBasemap(newBasemapId);
+});
     /* 9. BasemapToggle y Fullscreen como componentes web */
     const toggleCmp = document.createElement("arcgis-basemap-toggle");
     toggleCmp.view = view; toggleCmp.nextBasemap = "topo-vector";
@@ -204,8 +239,9 @@
       .then(()=>{
         document.getElementById("status").style.display="none";
         aplicarFiltro(select.value);          // Bolivia por defecto
-      });
+      });   
   });
+  
   </script>
 </body>
 </html>
